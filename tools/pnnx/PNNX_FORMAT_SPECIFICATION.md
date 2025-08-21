@@ -247,6 +247,51 @@ Each weight file contains raw binary tensor data:
 2. Binary file sizes must match declared tensor shapes and types
 3. Binary data must be readable as specified type
 
+## Special PNNX Operators
+
+PNNX defines several built-in operators with special semantics:
+
+### Core Operators
+- **`pnnx.Input`**: Graph input nodes
+  - Always has 0 inputs, 1 output
+  - Defines input tensor specifications
+  
+- **`pnnx.Output`**: Graph output nodes
+  - Always has 1 input, 0 outputs
+  - Marks graph outputs
+
+### Meta Operators  
+- **`pnnx.Expression`**: Mathematical expressions
+  - Uses `expr` parameter with special syntax
+  - References inputs as `@0`, `@1`, etc.
+  - Example: `expr=add(@0,mul(@1,2.0))`
+
+- **`pnnx.Attribute`**: External attribute references
+  - Links to external tensor data
+  - Used for large constant tensors
+
+- **`pnnx.SliceIndexes`**: Advanced indexing operations
+  - Handles complex tensor slicing
+  - Used for dynamic indexing patterns
+
+### Expression Syntax
+The `pnnx.Expression` operator uses a special expression language:
+
+```
+expr=operation(arg1,arg2,...)
+```
+
+**Supported operations:**
+- Arithmetic: `add`, `sub`, `mul`, `div`, `mod`
+- Math functions: `sin`, `cos`, `exp`, `log`, `sqrt`
+- Tensor operations: `view`, `transpose`, `permute`
+- Logic: `eq`, `ne`, `lt`, `le`, `gt`, `ge`
+
+**Argument types:**
+- `@N`: Reference to N-th input operand
+- `literal`: Numeric or string literal
+- `[a,b,c]`: Array literal
+
 ## Error Handling
 
 ### Parse Errors
@@ -298,5 +343,48 @@ torch.view      view_0      1 1 x y size=(-1,%batch_size,256) #size=(-1,%batch_s
 ```
 pnnx.Expression expr_0     2 1 a b c expr=add(@0,mul(@1,2.0))
 ```
+
+### Parameter Type Examples
+```
+# Boolean parameters
+dropout=True
+training=False
+
+# Numeric parameters  
+eps=1e-05
+momentum=0.1
+num_features=256
+
+# String parameters
+mode=bilinear
+padding_mode=zeros
+
+# Array parameters
+kernel_size=(3,3)
+stride=[2,2]
+dilation=(1,1,1)
+
+# Complex array parameters
+some_param=(1.0,2.0,3.0)
+indices=[0,1,2,3]
+```
+
+## Version Compatibility
+
+### Current Version
+- **Magic Number**: `7767517`
+- **Format Version**: 1.0
+- **Compatibility**: This specification describes the current stable format
+
+### Future Versions
+Future versions of PNNX format may:
+- Use different magic numbers for backward compatibility detection
+- Extend parameter encoding while maintaining backward compatibility
+- Add optional metadata sections
+
+### Implementation Notes
+- Parsers should validate the magic number first
+- Unknown parameter prefixes should be treated as errors
+- Unsupported data types should be rejected with clear error messages
 
 This formal specification provides the complete definition of the PNNX format for implementation, validation, and interoperability purposes.
