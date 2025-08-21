@@ -140,7 +140,15 @@ Parameters:
 
 `moduleop` (Optional): list of modules to keep as one big operator, separated by ",". for example, `models.common.Focus,models.yolo.Detect`
 
-# The pnnx.param format
+# The PNNX format
+
+PNNX format consists of two files that together represent a complete neural network model:
+- **`.pnnx.param`**: Human-readable text file describing the computation graph
+- **`.pnnx.bin`**: Binary file containing model weights and tensor data
+
+> 📋 **Formal Specification**: For complete technical details, grammar definitions, and validation rules, see [PNNX_FORMAT_SPECIFICATION.md](PNNX_FORMAT_SPECIFICATION.md)
+
+## The pnnx.param format
 
 ### example
 ```
@@ -151,37 +159,88 @@ nn.Conv2d       conv_0      1 1 0 1 bias=1 dilation=(1,1) groups=1 in_channels=1
 nn.Conv2d       conv_1      1 1 1 2 bias=1 dilation=(1,1) groups=1 in_channels=16 kernel_size=(2,2) out_channels=20 padding=(2,2) stride=(2,2) @bias=(20)f32 @weight=(20,16,2,2)f32
 pnnx.Output     output      1 0 2
 ```
-### overview
+
+### File Structure
+
+#### 1. Magic Number
 ```
-[magic]
+7767517
 ```
-* magic number : 7767517
+Fixed identifier for PNNX format files
+
+#### 2. Header
 ```
 [operator count] [operand count]
 ```
-* operator count : count of the operator line follows
-* operand count : count of all operands
-### operator line
+* operator count : total number of operators in the computation graph
+* operand count : total number of unique operands (tensors/blobs)
+
+#### 3. Operator Lines
 ```
 [type] [name] [input count] [output count] [input operands] [output operands] [operator params]
 ```
-* type : type name, such as Conv2d ReLU etc
-* name : name of this operator
-* input count : count of the operands this operator needs as input
-* output count : count of the operands this operator produces as output
-* input operands : name list of all the input blob names, separated by space
-* output operands : name list of all the output blob names, separated by space
-* operator params : key=value pair list, separated by space, operator weights are prefixed by ```@``` symbol, tensor shapes are prefixed by ```#``` symbol, input parameter keys are prefixed by ```$```
+* **type** : operator type identifier (e.g., `nn.Conv2d`, `torch.add`, `pnnx.Input`)
+* **name** : unique operator instance name
+* **input count** : number of input operands this operator consumes
+* **output count** : number of output operands this operator produces
+* **input operands** : space-separated list of input operand names
+* **output operands** : space-separated list of output operand names
+* **operator params** : space-separated key=value pairs with special prefixes:
+  - **`@`** prefix: attribute/weight references (e.g., `@weight=(64,3,3,3)f32`)
+  - **`#`** prefix: tensor shape specifications (e.g., `#size=(?,256)`)
+  - **`$`** prefix: input parameter mappings (e.g., `$input=value`)
+  - **no prefix**: regular operator parameters (e.g., `stride=(2,2)`)
 
-# The pnnx.bin format
+### Parameter Types and Encoding
 
-pnnx.bin file is a zip file with store-only mode(no compression)
+| Prefix | Type | Purpose | Example |
+|--------|------|---------|---------|
+| (none) | Parameter | Operator configuration | `stride=(1,1)`, `bias=True` |
+| `@` | Attribute | Weight/tensor data | `@weight=(64,3,3,3)f32` |
+| `#` | Shape | Output tensor shapes | `#size=(-1,256)` |
+| `$` | Input | Input parameter mapping | `$input=tensor_name` |
 
-weight binary file has its name composed by operator name and weight name
+### Data Types
 
-For example, ```nn.Conv2d       conv_0      1 1 0 1 bias=1 dilation=(1,1) groups=1 in_channels=12 kernel_size=(3,3) out_channels=16 padding=(0,0) stride=(1,1) @bias=(16) @weight=(16,12,3,3)``` would pull conv_0.weight and conv_0.bias into pnnx.bin zip archive.
+**Tensor Types:**
+`f32` `f64` `f16` `i32` `i64` `i16` `i8` `u8` `bool` `c64` `c128` `c32` `bf16`
 
-weight binaries can be listed or modified with any archive application eg. 7zip
+**Parameter Types:**
+- Scalars: `42`, `3.14`, `True`, `"relu"`
+- Arrays: `(1,2,3)`, `[224,224]`, `("a","b")`
+- Special: `None`, `()`, `[]` for null values
+
+## The pnnx.bin format
+
+The `.pnnx.bin` file is a ZIP archive with store-only mode (no compression) containing all weight and tensor data.
+
+### Archive Structure
+```
+pnnx.bin (ZIP file)
+├── operator_name.weight
+├── operator_name.bias
+├── another_op.running_mean
+└── ...
+```
+
+### File Naming Convention
+Binary files are named using the pattern: `{operator_name}.{attribute_name}`
+
+**Examples:**
+- `conv_0.weight` → Weight tensor for operator "conv_0"
+- `conv_0.bias` → Bias vector for operator "conv_0"  
+- `bn_1.running_mean` → BatchNorm running mean for operator "bn_1"
+
+### Binary Data Format
+- **Encoding**: Raw binary data, little-endian byte order
+- **Layout**: Row-major (C-style) memory layout
+- **Size**: `product(shape) × element_size` bytes
+- **Types**: Matches the type specification in the corresponding `@attribute` declaration
+
+### Archive Properties
+- **Compression**: Store-only mode (no compression)
+- **Compatibility**: Standard ZIP format, readable by any archive tool (7zip, WinRAR, etc.)
+- **Modification**: Binary files can be extracted, modified, and replaced using standard ZIP tools
 
 ![pnnx.bin](https://raw.githubusercontent.com/nihui/ncnn-assets/master/pnnx/pnnx.bin.png)
 
